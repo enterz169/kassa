@@ -2,11 +2,11 @@ import { round2 } from '../money'
 import type { Category, Transaction } from '../../types'
 import type { Cell, Table } from './table'
 
-export type ColRole = 'date' | 'amount' | 'debit' | 'credit' | 'desc' | 'category' | 'status' | 'card' | 'none'
+export type ColRole = 'date' | 'amount' | 'debit' | 'credit' | 'desc' | 'category' | 'status' | 'card' | 'mcc' | 'none'
 export interface Mapping { header: number; cols: Record<number, ColRole> }
 
 export const ROLE_LABELS: Record<ColRole, string> = {
-  date: 'Дата', amount: 'Сумма (± в одной колонке)', debit: 'Расход', credit: 'Приход', desc: 'Описание / магазин', category: 'Категория банка', status: 'Статус', card: 'Карта', none: 'Не использовать',
+  date: 'Дата', amount: 'Сумма (± в одной колонке)', debit: 'Расход', credit: 'Приход', desc: 'Описание / магазин', category: 'Категория банка', status: 'Статус', card: 'Карта', mcc: 'MCC (код магазина)', none: 'Не использовать',
 }
 
 const norm = (c: Cell) => String(c ?? '').toLowerCase().replace(/ё/g, 'е').replace(/\s+/g, ' ').trim()
@@ -24,6 +24,7 @@ function roleOf(h: string): { role: ColRole; score: number } {
   if (/сумма/.test(h) && !/кэшбэк|кешбэк|бонус|комисс/.test(h)) return { role: 'amount', score: 1 }
   if (/^(описание|назначение|контрагент|получатель|наименование|детали|операция|merchant|место)/.test(h)) return { role: 'desc', score: 3 }
   if (/описание|назначение|контрагент|магазин|получатель/.test(h)) return { role: 'desc', score: 2 }
+  if (/^(mcc|мсс)( |$)|код категории/.test(h)) return { role: 'mcc', score: 3 }
   if (/^категория/.test(h)) return { role: 'category', score: 2 }
   if (/^статус/.test(h)) return { role: 'status', score: 2 }
   if (/номер карты|^карта/.test(h)) return { role: 'card', score: 2 }
@@ -106,22 +107,37 @@ export interface Candidate {
 }
 
 const LOAN_RE = /кредит|погашение|займ|ипотек|рассрочк|платеж по договор/i
-const SELF_RE = /между своими|собственн.* счет|перевод себе|внутренн.* перевод/i
+const SELF_RE = /между своими|между счетами|собственн.* счет|перевод себе|внутренн.* перевод/i
 
 const KEYWORDS: [RegExp, string][] = [
-  [/пятерочк|магнит|перекресток|перекрёсток|лента|ашан|дикси|вкусвилл|spar|окей|азбука вкуса|самокат|яндекс.?лавка|delivery club|продукт|супермаркет|гипермаркет|chizhik|чижик|бристоль|красное.?белое|fix ?price/i, 'food'],
-  [/такси|яндекс.?go|uber|bolt|метро|метрополитен|ржд|аэрофлот|трансп|парков|азс|лукойл|газпромнефть|роснефть|shell|тройка|автобус|каршеринг|делимобил/i, 'transport'],
+  [/pyat[ey]+rochk|pyatyorochk|magnit|perekrestok|lenta|auchan|dixy|vkusvill|samokat|sbermarket|yandex.?(eda|lavka|market)|chizhik|bristol|пятерочк|магнит|перекресток|перекрёсток|лента|ашан|дикси|вкусвилл|spar|окей|азбука вкуса|самокат|яндекс.?лавка|delivery club|продукт|супермаркет|гипермаркет|chizhik|чижик|бристоль|красное.?белое|fix ?price|sber ?samo|samokat|krasnoe|beloe|bulochn|pekarn|bakery|khleb|hleb|булочн|пекарн|хлеб|рыба|мясо|овощи|фрукт/i, 'food'],
+  [/yandex.?(go|taxi)|uber|citymobil|gett|metro|rzd|azs|lukoil|gazprom|такси|яндекс.?go|uber|bolt|метро|метрополитен|ржд|аэрофлот|трансп|парков|азс|лукойл|газпромнефть|роснефть|shell|тройка|автобус|каршеринг|делимобил/i, 'transport'],
   [/аптек|клиник|медицин|стомат|врач|лаборатор|invitro|инвитро|здоров/i, 'health'],
-  [/кино|театр|концерт|игр|steam|playstation|развлеч|бар |ресторан|кафе|кофе|coffee|burger|kfc|макдоналдс|mcdonald|вкусно|додо|dodo|суши|пицц|starbucks|шоколадниц/i, 'fun'],
+  [/kfc|mcdonald|burger.?king|vkusno|dodo|starbucks|shokoladnitsa|kofemania|coffee|cafe|restoran|kinopoisk|steam|кино|театр|концерт|игр|steam|playstation|развлеч|бар |ресторан|кафе|кофе|coffee|burger|kfc|макдоналдс|mcdonald|вкусно|додо|dodo|суши|пицц|starbucks|шоколадниц/i, 'fun'],
   [/netflix|spotify|подписк|яндекс.?плюс|ivi|okko|кинопоиск|youtube|apple\.com|icloud|google (one|play)|телеграм|telegram premium|vpn/i, 'subs'],
   [/одежд|zara|h&m|lamoda|ламода|спортмастер|обув|uniqlo|befree|gloria|твое/i, 'clothes'],
-  [/wildberries|вайлдберриз|ozon|озон|aliexpress|алиэкспресс|market|маркет|dns|м\.?видео|эльдорадо|леруа|ikea|икеа|детск|товар|магазин/i, 'shopping'],
+  [/wildberries|ozon|aliexpress|lamoda|dns|mvideo|leroy|ikea|wildberries|вайлдберриз|ozon|озон|aliexpress|алиэкспресс|market|маркет|dns|м\.?видео|эльдорадо|леруа|ikea|икеа|детск|товар|магазин/i, 'shopping'],
   [/мтс|билайн|мегафон|теле2|tele2|связь|мобильн|yota/i, 'phone'],
   [/интернет|ростелеком|дом\.?ру|провайдер/i, 'internet'],
   [/жкх|жку|коммунал|электроэнерг|мосэнерго|газ |водоканал|квартплат|мособлеирц|отоплен/i, 'utilities'],
   [/аренд|найм/i, 'rent'],
   [/курс|школ|универс|образован|skillbox|гикбрейнс|stepik|udemy/i, 'edu'],
 ]
+
+/** MCC — код вида магазина, который банк присваивает операции. Надёжнее названия. */
+function mccCategory(mcc: number): string | undefined {
+  if ([5411, 5422, 5441, 5451, 5462, 5499, 5300, 5921].includes(mcc)) return 'food'
+  if ([5811, 5812, 5813, 5814, 5815, 5816, 5817, 5818, 7832, 7841, 7922, 7929, 7932, 7933, 7991, 7996, 7997, 7998, 7999, 5735, 5941, 5945, 5947].includes(mcc)) return mcc >= 5815 && mcc <= 5818 ? 'subs' : 'fun'
+  if ((mcc >= 4111 && mcc <= 4131) || [4784, 4789, 5511, 5521, 5531, 5532, 5533, 5541, 5542, 5551, 5571, 7523, 7531, 7538, 7542, 7549, 4011, 4112, 3000].includes(mcc) || (mcc >= 3000 && mcc <= 3299) || (mcc >= 4511 && mcc <= 4582)) return 'transport'
+  if ((mcc >= 8011 && mcc <= 8099) || [5122, 5912, 5975, 5976, 8071, 8099].includes(mcc)) return 'health'
+  if ((mcc >= 5611 && mcc <= 5699) || [5948, 5949, 7251, 7296].includes(mcc)) return 'clothes'
+  if ([4814, 4815, 4816, 4821].includes(mcc)) return 'phone'
+  if ([4899, 4900].includes(mcc)) return mcc === 4899 ? 'internet' : 'utilities'
+  if ((mcc >= 8211 && mcc <= 8299) || mcc === 8351) return 'edu'
+  if ([6513].includes(mcc)) return 'rent'
+  if ([5200, 5211, 5231, 5251, 5261, 5309, 5310, 5311, 5331, 5399, 5651, 5712, 5713, 5714, 5719, 5722, 5732, 5733, 5734, 5942, 5943, 5944, 5946, 5992, 5993, 5994, 5995, 5999, 5964, 5965, 5966, 5967, 5969, 4816].includes(mcc)) return 'shopping'
+  return undefined
+}
 
 const BANK_CAT: [RegExp, string][] = [
   [/супермаркет|продукт|еда/i, 'food'], [/транспорт|такси|авто|азс|топливо/i, 'transport'], [/аптек|медицин|здоров/i, 'health'],
@@ -152,7 +168,7 @@ export interface BuildOpts {
 export function buildCandidates({ table, mapping, cats, existing }: BuildOpts): Candidate[] {
   const roleIdx = (r: ColRole) => Number(Object.keys(mapping.cols).find((k) => mapping.cols[Number(k)] === r) ?? -1)
   const iDate = roleIdx('date'); const iAmt = roleIdx('amount'); const iDeb = roleIdx('debit'); const iCred = roleIdx('credit')
-  const iDesc = roleIdx('desc'); const iCat = roleIdx('category'); const iSt = roleIdx('status'); const iCard = roleIdx('card')
+  const iMcc = roleIdx('mcc'); const iDesc = roleIdx('desc'); const iCat = roleIdx('category'); const iSt = roleIdx('status'); const iCard = roleIdx('card')
 
   const byKey = (k: string) => cats.find((c) => c.kind === 'expense' && c.key === k)
   const other = byKey('other_exp') ?? cats.find((c) => c.kind === 'expense')!
@@ -196,9 +212,11 @@ export function buildCandidates({ table, mapping, cats, existing }: BuildOpts): 
     else {
       const nt = normTitle(rawDesc)
       const byLearn = learned.get(nt) ?? learned.get(normTitle(title))
+      const mccNum = iMcc >= 0 ? Number(String(row[iMcc] ?? '').replace(/\D/g, '')) : 0
+      const byMcc = mccNum ? mccCategory(mccNum) : undefined
       const byKw = KEYWORDS.find(([re]) => re.test(rawDesc))?.[1]
       const byBank = bankCat ? BANK_CAT.find(([re]) => re.test(bankCat))?.[1] : undefined
-      const k = byKw ?? byBank
+      const k = byKw === 'food' ? byKw : byMcc ?? byKw ?? byBank
       if (byLearn) categoryId = byLearn
       else if (k && byKey(k)) categoryId = byKey(k)!.id!
       if (LOAN_RE.test(rawDesc) || LOAN_RE.test(bankCat ?? '') || (loans && categoryId === loans.id)) { state = 'loan'; if (loans) categoryId = loans.id! }
