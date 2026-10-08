@@ -1,17 +1,18 @@
-import { ArrowDown, ArrowUp, BellRing, DatabaseBackup, Download, Info, Palette, RotateCcw, Trash2, Upload } from 'lucide-react'
+import { ArrowDown, ArrowUp, BellRing, DatabaseBackup, ShieldCheck, Download, Info, Palette, RotateCcw, Trash2, Upload } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { PageHeader } from '../components/Common'
 import { Button } from '../components/ui/Button'
 import { Card, SectionTitle } from '../components/ui/Card'
 import { Field, Input, MoneyInput, Segmented, Switch } from '../components/ui/Fields'
 import { Notice } from '../components/ui/Feedback'
-import { clearAllData, exportBackup, importBackup, isUserDataEmpty, markBackupDone } from '../db/backup'
+import { clearAllData, importBackup, isUserDataEmpty } from '../db/backup'
+import { saveBackupFile } from '../lib/export/backupFile'
+import { requestPersistence, storageInfo, forgetCounts, type StorageInfo } from '../lib/storage'
 import { loadDemoData } from '../db/demo'
 import { ensureAllSchedules } from '../db/loans'
 import { updateSettings } from '../db/settings'
 import { PAY_MODES } from '../lib/constants'
 import { fmtDate } from '../lib/dates'
-import { downloadBlob } from '../lib/export/download'
 import { askPermission, detectSupport, showLocal, type Support } from '../lib/notifications/local'
 import { parseMoney } from '../lib/money'
 import { useApp } from '../store/context'
@@ -125,19 +126,22 @@ function Form({ s }: { s: Settings }) {
   const permission = async () => { const p = await askPermission(); setSup(detectSupport()); toast(p === 'granted' ? 'Уведомления разрешены' : p === 'denied' ? 'Уведомления запрещены в браузере' : 'Браузер не дал разрешение', p === 'granted' ? 'ok' : 'bad') }
   const test = () => { if (!showLocal('Касса', 'Так будут выглядеть напоминания о платежах', 'test')) toast('Не удалось показать уведомление: нет разрешения или браузер блокирует их здесь', 'bad') }
 
+  const [store, setStore] = useState<StorageInfo | null>(null)
+  useEffect(() => { void storageInfo().then(setStore) }, [])
+  const protect = async () => { const ok = await requestPersistence(); setStore(await storageInfo()); toast(ok ? 'Хранилище защищено от автоочистки' : 'Браузер не дал защиту — делайте копии и установите приложение на экран «Домой»', ok ? 'ok' : 'bad') }
+
   const backup = async () => {
     try {
-      const data = await exportBackup()
-      const r = await downloadBlob(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }), `kassa-backup-${new Date().toISOString().slice(0, 10)}.json`)
+      const r = await saveBackupFile()
       if (r === 'failed') { toast('Не удалось сохранить файл: скачивание заблокировано', 'bad'); return }
-      if (r === 'saved') { await markBackupDone(); toast('Резервная копия сохранена') }
+      if (r === 'saved') toast('Резервная копия сохранена')
     } catch (e) { toast(errText(e), 'bad') }
   }
   const restore = async (f: File | undefined) => {
     if (!f) return
     try {
       const raw = JSON.parse(await f.text())
-      ask({ title: 'Заменить все данные копией?', text: 'Текущие записи будут заменены данными из файла. Это нельзя отменить — сначала сделайте копию текущих данных.', confirmLabel: 'Заменить', onConfirm: async () => { await importBackup(raw); await ensureAllSchedules(); toast('Данные восстановлены') } })
+      ask({ title: 'Заменить все данные копией?', text: 'Текущие записи будут заменены данными из файла. Это нельзя отменить — сначала сделайте копию текущих данных.', confirmLabel: 'Заменить', onConfirm: async () => { await importBackup(raw); forgetCounts(); await ensureAllSchedules(); toast('Данные восстановлены') } })
     } catch (e) { toast(e instanceof SyntaxError ? 'Файл повреждён: это не JSON' : errText(e), 'bad') }
     if (file.current) file.current.value = ''
   }
@@ -145,7 +149,7 @@ function Form({ s }: { s: Settings }) {
     if (!(await isUserDataEmpty())) { toast('Демо-данные добавляются только в пустое приложение', 'bad'); return }
     try { await loadDemoData(); toast('Демо-данные загружены') } catch (e) { toast(errText(e), 'bad') }
   }
-  const wipe = () => ask({ title: 'Удалить все данные?', text: 'Будут удалены смены, расходы, кредиты, заметки и цели. Категории вернутся к стандартным. Это нельзя отменить.', confirmLabel: 'Удалить всё', onConfirm: async () => { await clearAllData(); toast('Все данные удалены') } })
+  const wipe = () => ask({ title: 'Удалить все данные?', text: 'Будут удалены смены, расходы, кредиты, заметки и цели. Категории вернутся к стандартным. Это нельзя отменить.', confirmLabel: 'Удалить всё', onConfirm: async () => { await clearAllData(); forgetCounts(); toast('Все данные удалены') } })
 
   const permLabel = sup.permission === 'granted' ? 'разрешены' : sup.permission === 'denied' ? 'запрещены в браузере' : sup.permission === 'default' ? 'ещё не запрошены' : 'не поддерживаются'
 
@@ -206,6 +210,16 @@ function Form({ s }: { s: Settings }) {
         <Card className="space-y-4">
           <SectionTitle><span className="inline-flex items-center gap-2"><DatabaseBackup className="size-4 text-pink" />Данные и резервные копии</span></SectionTitle>
           <Notice tone="warn"><b>Где хранятся данные.</b> Только в этом браузере на этом устройстве (IndexedDB). Они переживают перезагрузку, но пропадут, если очистить данные сайта, сменить браузер или устройство. Делайте резервные копии. {s.lastBackupAt ? `Последняя копия: ${fmtDate(new Date(s.lastBackupAt).toISOString().slice(0, 10))}.` : 'Копий ещё не было.'}</Notice>
+          <div className="rounded-2xl border border-line bg-surface-2 p-4 text-sm">
+            <div className="flex items-start gap-3">
+              <ShieldCheck className={`mt-0.5 size-5 shrink-0 ${store?.persisted ? 'text-ok' : 'text-warn'}`} />
+              <div className="min-w-0 flex-1">
+                <div className="font-semibold">{!store ? 'Проверяю…' : !store.supported ? 'Защита хранилища недоступна в этом окне' : store.persisted ? 'Хранилище защищено от автоочистки' : 'Хранилище может быть очищено браузером'}</div>
+                <p className="mt-1 text-xs leading-relaxed text-muted">{store?.persisted ? 'Браузер не удалит историю при нехватке места. Копии всё равно нужны на случай смены телефона.' : 'Без защиты браузер вправе стереть данные сайта (чаще на iPhone, если не открывать ~неделю). Установите приложение на экран «Домой» и нажмите кнопку ниже.'}{store?.usedMb !== undefined ? ` Занято: ${store.usedMb < 1 ? '<1' : Math.round(store.usedMb)} МБ.` : ''}</p>
+                {store?.supported && !store.persisted && <Button size="sm" className="mt-3" onClick={protect}>Защитить хранилище</Button>}
+              </div>
+            </div>
+          </div>
           <div className="flex flex-wrap gap-3">
             <Button variant="primary" icon={<Download className="size-4" />} onClick={backup}>Скачать копию</Button>
             <Button icon={<Upload className="size-4" />} onClick={() => file.current?.click()}>Восстановить из файла</Button>

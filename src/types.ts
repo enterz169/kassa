@@ -39,6 +39,8 @@ export interface Transaction {
   comment?: string
   note?: string
   loanPaymentId?: number
+  /** Ключ строки банковской выписки — защита от повторного импорта. */
+  importKey?: string
   createdAt: number
   updatedAt: number
 }

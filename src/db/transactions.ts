@@ -53,3 +53,21 @@ export async function deleteCategory(id: number): Promise<void> {
   if ((await categoryUsage(id)) > 0) throw new Error('Категория используется в записях. Сначала перенесите или удалите записи.')
   await db.categories.delete(id)
 }
+
+export interface ImportRow { date: string; amount: number; title: string; categoryId: number; key: string; comment?: string }
+
+/** Импорт выписки: один раз, без дублей (ключ строки проверяется внутри транзакции). */
+export async function importTransactions(rows: ImportRow[]): Promise<{ added: number; skipped: number }> {
+  const now = Date.now()
+  return db.transaction('rw', db.transactions, async () => {
+    const have = new Set((await db.transactions.toArray()).map((t) => t.importKey).filter(Boolean) as string[])
+    const fresh = rows.filter((r) => !have.has(r.key))
+    if (fresh.length) {
+      await db.transactions.bulkAdd(fresh.map((r) => ({
+        type: 'expense' as const, amount: r.amount, title: r.title, categoryId: r.categoryId, date: r.date,
+        method: 'Карта', comment: r.comment, importKey: r.key, createdAt: now, updatedAt: now,
+      })))
+    }
+    return { added: fresh.length, skipped: rows.length - fresh.length }
+  })
+}

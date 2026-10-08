@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { CategoriesSheet } from './components/forms/CategoriesSheet'
 import { DrillSheet } from './components/forms/DrillSheet'
 import { GoalSheet } from './components/forms/GoalSheet'
+import { ImportSheet } from './components/forms/ImportSheet'
 import { LoanDetailSheet } from './components/forms/LoanDetailSheet'
 import { LoanSheet } from './components/forms/LoanSheet'
 import { MultiShiftSheet } from './components/forms/MultiShiftSheet'
@@ -17,6 +18,7 @@ import { Skeleton } from './components/ui/Card'
 import { ensureAllSchedules } from './db/loans'
 import { ensureSeed } from './db/settings'
 import { applyTheme } from './lib/theme'
+import { rememberCounts, requestPersistence } from './lib/storage'
 import { computeReminders } from './lib/notifications/reminders'
 import { fireDue } from './lib/notifications/local'
 import { AnalyticsPage } from './pages/AnalyticsPage'
@@ -36,6 +38,7 @@ function SheetHost() {
   if (!sheet) return null
   switch (sheet.kind) {
     case 'quick': return <QuickSheet />
+    case 'import': return <ImportSheet />
     case 'shift': return <ShiftSheet key={sheet.date} date={sheet.date} />
     case 'recurring': return <RecurringSheet date={sheet.date} />
     case 'multi': return <MultiShiftSheet dates={sheet.dates} />
@@ -66,9 +69,11 @@ function Pages() {
 }
 
 function Inner() {
-  const { ready, loans, payments, today, settings } = useApp()
+  const { ready, loans, payments, today, settings, shifts, txs } = useApp()
   const theme = settings?.theme
   useEffect(() => { applyTheme(theme) }, [theme])
+  useEffect(() => { if (ready) rememberCounts({ shifts: shifts.length, txs: txs.length, loans: loans.length }) }, [ready, shifts.length, txs.length, loans.length])
+  useEffect(() => { void requestPersistence() }, [])
   const reminders = useMemo(() => computeReminders(loans, payments, today), [loans, payments, today])
   const alerts = reminders.filter((r) => r.level === 'overdue' || r.level === 'today' || r.level === 'soon').length
 

@@ -3,6 +3,7 @@ import type { NoteLink, PageId, TxType } from '../types'
 
 export type Sheet =
   | { kind: 'quick' }
+  | { kind: 'import' }
   | { kind: 'shift'; date: string }
   | { kind: 'recurring'; date?: string }
   | { kind: 'multi'; dates: string[] }

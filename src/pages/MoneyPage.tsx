@@ -1,4 +1,4 @@
-import { Download, Plus, Search, Settings2, Receipt, TrendingUp } from 'lucide-react'
+import { Download, FileUp, Plus, Search, Settings2, Receipt, TrendingUp } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { PageHeader, Row, Stat } from '../components/Common'
 import { Donut } from '../components/charts/Charts'
@@ -22,9 +22,10 @@ type Sort = 'date-desc' | 'date-asc' | 'amount-desc' | 'amount-asc'
 export function MoneyPage() {
   const tab = useUI((s) => s.moneyTab)
   const go = useUI((s) => s.go)
+  const open = useUI((s) => s.open)
   return (
     <>
-      <PageHeader title="Доходы и расходы" />
+      <PageHeader title="Доходы и расходы" action={<Button size="sm" icon={<FileUp className="size-4" />} onClick={() => open({ kind: 'import' })}>Из банка</Button>} />
       <Segmented className="mb-4" value={tab} onChange={(t: MoneyTab) => go('money', { moneyTab: t, category: null })} options={[{ value: 'income', label: 'Доходы' }, { value: 'expense', label: 'Расходы' }, { value: 'balance', label: 'Баланс' }]} />
       {tab === 'income' && <IncomeTab />}
       {tab === 'expense' && <ExpenseTab />}

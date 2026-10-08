@@ -18,6 +18,8 @@ import { SHIFT_STATUS } from '../lib/constants'
 import { fmtHours, fmtMoney, fmtSigned } from '../lib/money'
 import { useApp } from '../store/context'
 import { normalizeTheme } from '../lib/theme'
+import { forgetCounts, readRemembered } from '../lib/storage'
+import { saveBackupFile } from '../lib/export/backupFile'
 import { errText, useUI } from '../store/ui'
 
 export function HomePage() {
@@ -49,11 +51,34 @@ export function HomePage() {
   const { order, hidden } = theme
   const empty = shifts.length === 0 && txs.length === 0 && loans.length === 0
 
+  const remembered = useMemo(() => readRemembered(), [])
+  const lost = empty && !!remembered && remembered.shifts + remembered.txs + remembered.loans > 0
+  const backupAge = settings?.lastBackupAt ? Math.floor((Date.now() - settings.lastBackupAt) / 86400000) : null
+  const needBackup = !empty && (backupAge === null || backupAge >= 7)
+  const doBackup = async () => { try { const r = await saveBackupFile(); if (r === 'saved') toast('Резервная копия сохранена'); else if (r === 'failed') toast('Не удалось сохранить файл', 'bad') } catch (e) { toast(errText(e), 'bad') } }
+
   const demo = async () => { try { await loadDemoData(); toast('Демо-данные загружены') } catch (e) { toast(errText(e), 'bad') } }
 
   return (
     <>
       <PageHeader title={`${greeting()}${settings?.userName ? `, ${settings.userName}` : ''}`} sub={fmtFullToday().replace(/^./, (c) => c.toUpperCase())} />
+
+      {lost && (
+        <Notice tone="bad" className="mb-5">
+          <div className="space-y-2">
+            <p><b>Данные пропали.</b> Раньше здесь были записи (смен: {remembered!.shifts}, операций: {remembered!.txs}, кредитов: {remembered!.loans}), а сейчас приложение пустое — скорее всего, браузер очистил хранилище. Не добавляйте новые записи, если хотите восстановить историю: загрузите файл резервной копии.</p>
+            <div className="flex flex-wrap gap-2"><Button size="sm" variant="primary" onClick={() => go('settings')}>Восстановить из копии</Button><Button size="sm" onClick={() => { forgetCounts(); toast('Напоминание скрыто') }}>Начать с нуля</Button></div>
+          </div>
+        </Notice>
+      )}
+      {needBackup && (
+        <Notice tone="warn" className="mb-5">
+          <div className="flex items-center justify-between gap-3">
+            <span>{backupAge === null ? 'Резервной копии ещё не было.' : `Последняя копия — ${backupAge} дн. назад.`} Сохраните файл, чтобы история не пропала.</span>
+            <Button size="sm" variant="primary" onClick={doBackup}>Сохранить</Button>
+          </div>
+        </Notice>
+      )}
 
       {empty && (
         <Card className="mb-5 overflow-hidden border-pink/30 bg-gradient-to-br from-orange/10 via-pink/10 to-purple/10 text-center">
