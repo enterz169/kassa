@@ -1,12 +1,14 @@
+import { installPdfPolyfills } from './polyfills'
 import type { Table } from './table'
 
 /** Достаёт строки текста из PDF (pdf.js работает на устройстве, файл никуда не уходит). */
 export async function readPdfLines(file: File): Promise<string[]> {
+  installPdfPolyfills()
   const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs')
   const { default: workerCode } = await import('pdfjs-dist/legacy/build/pdf.worker.min.mjs?raw')
   if (!pdfjs.GlobalWorkerOptions.workerPort) {
     try {
-      pdfjs.GlobalWorkerOptions.workerPort = new Worker(URL.createObjectURL(new Blob([workerCode], { type: 'text/javascript' })), { type: 'module' })
+      pdfjs.GlobalWorkerOptions.workerPort = new Worker(URL.createObjectURL(new Blob([`(${installPdfPolyfills.toString()})();\n`, workerCode], { type: 'text/javascript' })), { type: 'module' })
     } catch {
       throw new Error('В этом окне нельзя прочитать PDF. Откройте установленное приложение (с иконки на экране «Домой») или выберите CSV/Excel.')
     }
