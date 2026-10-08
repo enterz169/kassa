@@ -37,6 +37,11 @@ export async function readTable(file: File): Promise<Table> {
     return rows.filter((r) => r.some((c) => c !== null && c !== undefined && String(c).trim() !== ''))
   }
   if (name.endsWith('.xls')) throw new Error('Старый формат .xls не поддерживается. В банке выберите CSV или XLSX, либо пересохраните файл в Excel как .xlsx.')
-  if (name.endsWith('.pdf')) throw new Error('PDF-выписки читать нельзя. В приложении банка выберите выгрузку в CSV или Excel.')
+  if (name.endsWith('.pdf') || file.type === 'application/pdf') {
+    const { readPdfLines, pdfLinesToTable } = await import('./pdf')
+    const t = pdfLinesToTable(await readPdfLines(file))
+    if (t.length < 2) throw new Error('В PDF не нашлось операций. Если это скан (фото), прочитать его нельзя — нужна выписка с текстом или CSV/Excel.')
+    return t
+  }
   return parseCsv(decodeText(await file.arrayBuffer()))
 }

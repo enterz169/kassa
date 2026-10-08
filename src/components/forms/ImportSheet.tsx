@@ -80,7 +80,7 @@ export function ImportSheet() {
   const header = table && mapping ? table[mapping.header] : []
 
   return (
-    <Modal title="Импорт выписки" subtitle={name || 'CSV или Excel из приложения банка'} onClose={close}
+    <Modal title="Импорт выписки" subtitle={name || 'PDF, CSV или Excel из приложения банка'} onClose={close}
       footer={rows.length > 0 ? <Button variant="primary" full loading={busy} disabled={!chosen.length} onClick={submit}>{chosen.length ? `Добавить ${chosen.length} ${plural(chosen.length, ['расход', 'расхода', 'расходов'])} на ${fmtMoney(sum)}` : 'Отметьте операции'}</Button> : undefined}>
       <div className="space-y-4">
         {!table && (
@@ -88,15 +88,17 @@ export function ImportSheet() {
             <button type="button" onClick={() => file.current?.click()} disabled={busy} className="flex w-full flex-col items-center gap-2 rounded-2xl border border-dashed border-line-strong bg-surface-2 px-4 py-8 text-center transition hover:border-pink/50">
               <FileUp className="size-8 text-pink" />
               <span className="text-[15px] font-semibold">{busy ? 'Читаю файл…' : 'Выбрать файл выписки'}</span>
-              <span className="text-xs text-muted">CSV или XLSX</span>
+              <span className="text-xs text-muted">PDF, CSV или Excel</span>
             </button>
-            <input ref={file} type="file" accept=".csv,.xlsx,.txt,text/csv" className="hidden" onChange={(e) => pick(e.target.files?.[0])} />
+            <input ref={file} type="file" accept=".pdf,.csv,.xlsx,.txt,application/pdf,text/csv" className="hidden" onChange={(e) => pick(e.target.files?.[0])} />
             <div className="space-y-1.5 text-sm text-muted">
-              <p><b className="text-ink">Как получить выписку:</b> в приложении банка откройте счёт или карту → «Выписка» / «Справка об операциях» → период → формат CSV или Excel → сохраните файл на телефон.</p>
+              <p><b className="text-ink">Как получить выписку:</b> в приложении банка откройте счёт или карту → «Выписка» / «Справка об операциях» → период → сохраните файл на телефон (PDF, CSV или Excel подойдут).</p>
               <p className="flex gap-2 text-xs text-faint"><ShieldCheck className="mt-0.5 size-4 shrink-0 text-ok" />Файл читается прямо на вашем устройстве и никуда не отправляется. Номера карты и пароли приложению не нужны.</p>
             </div>
           </>
         )}
+
+        {rows.length > 0 && name.toLowerCase().endsWith('.pdf') && <Notice tone="info">Из PDF данные читаются по тексту, поэтому названия и знаки сумм бывают неточными. Просмотрите список перед добавлением; CSV или Excel из банка читаются надёжнее.</Notice>}
 
         {error && <Notice tone={rows.length ? 'warn' : 'bad'}>{error}</Notice>}
 

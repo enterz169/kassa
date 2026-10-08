@@ -161,7 +161,7 @@ export function buildCandidates({ table, mapping, cats, existing }: BuildOpts): 
   for (const t of [...existing].filter((x) => x.type === 'expense').sort((a, b) => a.date.localeCompare(b.date))) learned.set(normTitle(t.title), t.categoryId)
 
   const seenKeys = new Set(existing.map((t) => t.importKey).filter(Boolean) as string[])
-  const manual = existing.filter((t) => t.type === 'expense' && !t.importKey && !t.loanPaymentId)
+  const manual = existing.filter((t) => t.type === 'expense' && !t.loanPaymentId)
   const counter = new Map<string, number>()
   const out: Candidate[] = []
 
